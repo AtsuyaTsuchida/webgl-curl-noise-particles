@@ -1,0 +1,6 @@
+node_modules/
+.DS_Store
+
+# SFC campus point cloud data (excluded from this repository)
+sfc_campus - 75cm.ply
+ply-targets.js

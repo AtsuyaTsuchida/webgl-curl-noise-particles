@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGL Curl Noise Particles</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg0: #000000;
+      --bg1: #000000;
+      --fg: #d8ecff;
+      --muted: rgba(216, 236, 255, 0.6);
+      --line: rgba(130, 190, 255, 0.16);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: var(--fg);
+      font-family: "SF Mono", "IBM Plex Mono", "Roboto Mono", monospace;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+    }
+
+    .stage {
+      position: relative;
+      width: min(100vw, calc(100vh * 32 / 9));
+      aspect-ratio: 32 / 9;
+    }
+
+    body.aspect-16-9 .stage {
+      width: min(100vw, calc(100vh * 16 / 9));
+      aspect-ratio: 16 / 9;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 1;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      background: rgba(5, 10, 18, 0.55);
+      backdrop-filter: blur(10px);
+      max-width: min(360px, calc(100vw - 32px));
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+    }
+
+    .hud h1 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .hud p {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .control {
+      margin-top: 10px;
+    }
+
+    .control label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .control input[type="range"] {
+      width: 100%;
+      accent-color: #fff;
+    }
+
+    .control button {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.72);
+      color: var(--fg);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .button-group {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+      gap: 6px;
+    }
+
+    .button-group button.active {
+      background: rgba(216, 236, 255, 0.18);
+      border-color: rgba(216, 236, 255, 0.42);
+    }
+
+    body.gui-hidden .hud {
+      display: none;
+    }
+  </style>
+</head>
+  <body>
+  <div class="hud">
+    <h1>3D Curl Noise Simulation</h1>
+    <p id="cameraLabel">Camera 1 / Near Front</p>
+    <p>Keys: 1-6 center, 7-9 outer, 0 spin burst. Reload: center burst, then curl noise.</p>
+    <div class="control">
+      <label>Simulation Mode</label>
+      <div class="button-group" id="simMode">
+        <button type="button" data-value="curl" class="active">Curl Noise</button>
+        <button type="button" data-value="roots">L-System Roots</button>
+        <button type="button" data-value="plyCurl">PLY Curl</button>
+      </div>
+    </div>
+    <div class="control">
+      <label for="loadPly">Point Cloud (.ply)</label>
+      <button id="loadPly" type="button">Load PLY File</button>
+      <p id="plyLoadStatus">Drop a .ply on the canvas or click to load. Any point cloud works.</p>
+      <input id="plyFileInput" type="file" accept=".ply" style="display:none">
+    </div>
+    <div class="control">
+      <label>Noise Type</label>
+      <div class="button-group" id="noiseType">
+        <button type="button" data-value="curl" class="active">Curl</button>
+        <button type="button" data-value="ridged">Ridged</button>
+        <button type="button" data-value="worley">Worley</button>
+        <button type="button" data-value="domainWarped">Domain Warped</button>
+      </div>
+    </div>
+    <div class="control">
+      <label for="cameraSpeed">Camera Speed: <span id="cameraSpeedValue">1.00</span></label>
+      <input id="cameraSpeed" type="range" min="0.05" max="4.00" step="0.05" value="1.00">
+    </div>
+    <div class="control">
+      <label for="pointSize">Point Size: <span id="pointSizeValue">2.60</span></label>
+      <input id="pointSize" type="range" min="0.50" max="8.00" step="0.05" value="2.60">
+    </div>
+    <div class="control">
+      <label for="bloomAmount">Bloom: <span id="bloomAmountValue">0.00</span></label>
+      <input id="bloomAmount" type="range" min="0.00" max="1.50" step="0.01" value="0.00">
+    </div>
+    <div class="control">
+      <label for="particleR">Particle R: <span id="particleRValue">1.00</span></label>
+      <input id="particleR" type="range" min="0.00" max="1.00" step="0.01" value="1.00">
+    </div>
+    <div class="control">
+      <label for="particleG">Particle G: <span id="particleGValue">1.00</span></label>
+      <input id="particleG" type="range" min="0.00" max="1.00" step="0.01" value="1.00">
+    </div>
+    <div class="control">
+      <label for="particleB">Particle B: <span id="particleBValue">1.00</span></label>
+      <input id="particleB" type="range" min="0.00" max="1.00" step="0.01" value="1.00">
+    </div>
+    <div class="control">
+      <label for="curlFrequency">Curl Frequency: <span id="curlFrequencyValue">0.72</span></label>
+      <input id="curlFrequency" type="range" min="0.35" max="1.20" step="0.01" value="0.72">
+    </div>
+    <div class="control">
+      <label for="curlStrength">Curl Strength: <span id="curlStrengthValue">0.78</span></label>
+      <input id="curlStrength" type="range" min="0.30" max="1.20" step="0.01" value="0.78">
+    </div>
+    <div class="control">
+      <label for="orbitStrength">Orbit Strength: <span id="orbitStrengthValue">0.07</span></label>
+      <input id="orbitStrength" type="range" min="0.00" max="0.18" step="0.005" value="0.07">
+    </div>
+    <div class="control">
+      <label for="pullStrength">Pull Strength: <span id="pullStrengthValue">0.028</span></label>
+      <input id="pullStrength" type="range" min="0.010" max="0.060" step="0.001" value="0.028">
+    </div>
+    <div class="control">
+      <label for="plyColorize">PLY Color Overlay</label>
+      <button id="plyColorize" type="button">Off</button>
+    </div>
+    <div class="control">
+      <label for="flowColorize">Flow Color Overlay</label>
+      <button id="flowColorize" type="button">Off</button>
+    </div>
+    <div class="control">
+      <label for="restartSimulation">Simulation</label>
+      <button id="restartSimulation" type="button">Restart Simulation</button>
+    </div>
+    <div class="control">
+      <label for="toggleGui">GUI</label>
+      <button id="toggleGui" type="button">Hide GUI</button>
+    </div>
+    <div class="control">
+      <label for="fullscreenMode">Fullscreen Output</label>
+      <button id="fullscreenMode" type="button">Enter 16:9 Fullscreen</button>
+      <p>Fullscreen the monitor and keep the 32:9 render centered.</p>
+    </div>
+    <div class="control">
+      <label>Aspect Mode</label>
+      <div class="button-group" id="aspectMode">
+        <button type="button" data-value="32-9" class="active">32:9</button>
+        <button type="button" data-value="16-9">16:9</button>
+      </div>
+    </div>
+    <div class="control">
+      <label for="exportFrames">Export Frames</label>
+      <input id="exportFrames" type="range" min="30" max="3600" step="30" value="120">
+      <p>Frames: <span id="exportFramesValue">120</span></p>
+    </div>
+    <div class="control">
+      <label for="exportFps">Export FPS</label>
+      <input id="exportFps" type="range" min="24" max="60" step="1" value="30">
+      <p>FPS: <span id="exportFpsValue">30</span></p>
+    </div>
+    <div class="control">
+      <label for="exportPng">PNG Sequence Export</label>
+      <button id="exportPng" type="button">Export 3840x1080 PNGs</button>
+      <p id="exportStatus">Canvas only. GUI is not included.</p>
+    </div>
+  </div>
+  <div class="hud" id="error" style="top:auto;bottom:16px;display:none;"></div>
+  <div class="stage">
+    <canvas id="canvas"></canvas>
+  </div>
+  <script src="./ply-targets.js"></script>
+  <script src="./main.js"></script>
+</body>
+</html>
